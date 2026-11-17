@@ -84,5 +84,45 @@ function seeded(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) 
   chk('Dropout 训练仍能收敛', last < 0.1 && ev.acc === 1, 'loss=' + last.toFixed(4) + ', acc=' + ev.acc);
 }
 
+// 5) 全搭配数值梯度检验：每种损失在其语义有效的输出激活下逐项校验 ∂L/∂W 与 ∂L/∂b
+{
+  // BCE 的导数假设输出是 (0,1) 概率，因此只在 sigmoid 输出下检验；
+  // CE 只在 softmax 输出下检验；MSE/MAE/Huber 对任意输出激活都成立，逐一遍历。
+  const plans = [];
+  for (const outAct of ['sigmoid', 'tanh', 'relu', 'lrelu', 'elu', 'linear']) {
+    for (const loss of ['mse', 'mae', 'huber']) plans.push({ outAct, loss });
+    if (outAct === 'sigmoid') plans.push({ outAct, loss: 'bce' });
+  }
+  plans.push({ outAct: 'softmax', loss: 'ce' });
+  plans.push({ outAct: 'softmax', loss: 'mse' }); // softmax 通用雅可比路径
+
+  const targetFor = (loss) => loss === 'ce' ? [0, 1]
+    : loss === 'bce' ? [0.8, 0.3] : [0.4, -0.25];
+  let worst = 0, params = 0, bad = 0;
+  for (const plan of plans) {
+    const sizes = [3, 4, 2];
+    const net = new E.Network({ sizes, activations: ['tanh', plan.outAct], loss: plan.loss, seed: 7 });
+    const x = [0.2, 0.7, -0.5], t = targetFor(plan.loss), h = 1e-6;
+    const bk = net.backward(net.forward(x), t);
+    const L = () => net.lossOf(net.forward(x).a[net.L], t);
+    for (let k = 0; k < net.L; k++) for (let j = 0; j < sizes[k + 1]; j++) {
+      for (let i = 0; i < sizes[k]; i++) {
+        const o = net.weights[k][j][i];
+        net.weights[k][j][i] = o + h; const lp = L();
+        net.weights[k][j][i] = o - h; const lm = L();
+        net.weights[k][j][i] = o;
+        worst = Math.max(worst, Math.abs((lp - lm) / (2 * h) - bk.gradW[k][j][i])); params++;
+      }
+      const ob = net.biases[k][j];
+      net.biases[k][j] = ob + h; const lp = L();
+      net.biases[k][j] = ob - h; const lm = L();
+      net.biases[k][j] = ob;
+      worst = Math.max(worst, Math.abs((lp - lm) / (2 * h) - bk.gradB[k][j])); params++;
+    }
+  }
+  chk('全搭配数值梯度检验', worst < 1e-5,
+    '搭配=' + plans.length + ', 参数=' + params + ', 最大误差=' + worst.toExponential(2));
+}
+
 console.log('\n' + (fails ? fails + ' FAILED' : 'ALL PASSED'));
 process.exitCode = fails ? 1 : 0;
