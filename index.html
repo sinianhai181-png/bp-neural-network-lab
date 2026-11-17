@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BP 反向传播交互实验台</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">BP</div>
+    <div class="brand-text">
+      <h1>BP 神经网络反向传播实验台</h1>
+      <p>自定义网络结构 · 逐层推导前向 / 反向传播 · 实时观察迭代收敛</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span id="pairBadge" class="badge badge-ok">配置就绪</span>
+    <button class="btn btn-ghost" id="btnExport" type="button">导出配置</button>
+    <button class="btn btn-ghost" id="btnImport" type="button">导入配置</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ==================== 左侧配置 ==================== -->
+  <aside class="sidebar">
+
+    <section class="card">
+      <div class="card-head"><span class="num">1</span><h2>网络结构</h2></div>
+      <div class="form-row two">
+        <label>输入层节点数
+          <input type="number" id="inNodes" min="1" max="12" step="1" value="2">
+        </label>
+        <label>输出层节点数
+          <input type="number" id="outNodes" min="1" max="12" step="1" value="1">
+        </label>
+      </div>
+
+      <div class="sub-head">
+        <span>隐藏层 <small>（层数与每层节点数均可自由设置）</small></span>
+        <button class="btn btn-mini" id="btnAddLayer" type="button">+ 添加一层</button>
+      </div>
+      <div id="hiddenList" class="hidden-list"></div>
+
+      <label class="mt">输出层激活函数
+        <select id="outAct"></select>
+      </label>
+      <p class="hint" id="structureSummary"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="num">2</span><h2>损失函数与训练参数</h2></div>
+      <label>损失函数
+        <select id="lossFn"></select>
+      </label>
+      <p class="hint" id="lossHint"></p>
+
+      <div class="form-row two mt">
+        <label>学习率 η
+          <input type="number" id="lr" min="0.000001" max="100" step="any" value="0.8">
+        </label>
+        <label>循环次数 Epochs
+          <input type="number" id="epochs" min="1" max="200000" step="1" value="1000">
+        </label>
+      </div>
+      <div class="form-row two">
+        <label>优化器
+          <select id="optimizer">
+            <option value="sgd">SGD 随机梯度下降</option>
+            <option value="momentum">Momentum 动量</option>
+            <option value="adam">Adam 自适应</option>
+          </select>
+        </label>
+        <label>每帧训练轮数
+          <input type="number" id="speed" min="1" max="200" step="1" value="5">
+        </label>
+      </div>
+      <div class="form-row two">
+        <label>权重初始化
+          <select id="initMethod">
+            <option value="xavier">Xavier 均匀</option>
+            <option value="he">He 正态（适配 ReLU）</option>
+            <option value="normal">正态 N(0, ~0.5)</option>
+            <option value="uniform">均匀 (−1, 1)</option>
+            <option value="zeros">全 0</option>
+            <option value="ones">全 1</option>
+          </select>
+        </label>
+        <label>随机种子
+          <input type="number" id="seed" min="0" max="999999" step="1" value="42">
+        </label>
+      </div>
+      <label>梯度裁剪阈值 <small class="muted">（0 = 不裁剪）</small>
+        <input type="number" id="gradClip" min="0" max="1000" step="any" value="5">
+      </label>
+      <button class="btn btn-ghost full mt" id="btnReinit" type="button">按当前设置重新初始化权重与偏置</button>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="num">3</span><h2>训练数据（输入项 / 目标值）</h2></div>
+      <div class="form-row preset-row">
+        <select id="preset">
+          <option value="xor">XOR 异或（2 输入 / 1 输出）</option>
+          <option value="and">AND 与（2 输入 / 1 输出）</option>
+          <option value="or">OR 或（2 输入 / 1 输出）</option>
+          <option value="linear">线性拟合 y = 2x + 1（1 输入 / 1 输出）</option>
+          <option value="multi">三分类 one-hot（2 输入 / 3 输出）</option>
+        </select>
+        <button class="btn btn-mini" id="btnLoadPreset" type="button">载入</button>
+      </div>
+      <div id="datasetWrap" class="table-scroll"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-mini" id="btnAddRow" type="button">+ 添加样本</button>
+        <button class="btn btn-ghost btn-mini" id="btnDelRow" type="button">− 删除末行</button>
+      </div>
+      <p class="hint">直接修改单元格即可自定义输入项与目标值；修改维度后可一键载入匹配结构。</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="num">4</span><h2>权重 W 与偏置 b</h2></div>
+      <p class="hint">可逐项手工设定。第 k 层的 W 行数为「下一层节点数」、列数为「上一层节点数」。</p>
+      <div id="paramEditor" class="param-editor"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-mini" id="btnApplyParams" type="button">应用到网络</button>
+        <button class="btn btn-ghost btn-mini" id="btnSyncParams" type="button">读取当前值</button>
+        <button class="btn btn-ghost btn-mini" id="btnRandomize" type="button">重新随机</button>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ==================== 右侧工作区 ==================== -->
+  <section class="workspace">
+
+    <section class="card">
+      <div class="card-head spread">
+        <h2>网络结构与权重可视化</h2>
+        <div class="head-tools">
+          <span class="stat" id="netStats">尚未开始训练</span>
+          <label class="check"><input type="checkbox" id="showAct" checked> 显示激活值</label>
+        </div>
+      </div>
+      <div id="netSvgWrap" class="svg-wrap"></div>
+      <div class="legend">
+        <span><i class="dot pos"></i> 正权重</span>
+        <span><i class="dot neg"></i> 负权重</span>
+        <span><i class="line-sample"></i> 线条越粗 = |w| 越大（悬停查看数值）</span>
+      </div>
+    </section>
+
+    <!-- ============ 传播全景：整条链路一次铺开 ============ -->
+    <section class="card flow-section">
+      <div class="card-head spread">
+        <h2>BP 传播全景 · 每个环节 / 每一层</h2>
+        <div class="head-tools">
+          <span class="stat" id="flowStats">快照尚未生成</span>
+          <button class="btn btn-primary btn-mini" id="btnBuildViz" type="button">↻ 重新生成快照</button>
+        </div>
+      </div>
+      <p class="hint">上排蓝色为<b>前向传播</b>（输入逐层流向输出），下排橙色为<b>误差反向传播</b>（δ 由输出层回传）。每个方框都可点击，直接跳到对应环节；方框内的数值与权重色块均来自当前网络的真实计算。</p>
+      <div class="flow-legend">
+        <span><i class="sw fwd"></i> 前向：z = W·a + b → a = f(z)</span>
+        <span><i class="sw bwd"></i> 反向：δ 回传 → 梯度 ∂W</span>
+        <span><i class="sw upd"></i> 更新：W ← W − η·∂W</span>
+        <span><i class="sw heat-pos"></i> 正权重 / 正梯度</span>
+        <span><i class="sw heat-neg"></i> 负权重 / 负梯度</span>
+      </div>
+      <div id="flowCanvas" class="flow-canvas"></div>
+    </section>
+
+    <!-- ============ 逐环节演示播放器 ============ -->
+    <section class="card viz-section">
+      <div class="card-head spread">
+        <h2>逐环节演示 · 一步一步看清传播过程</h2>
+        <div class="head-tools">
+          <label class="inline-label">样本
+            <select id="sampleSel"></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="player-bar">
+        <button class="btn btn-ghost btn-mini" id="vizFirst" type="button" title="回到开头">⏮</button>
+        <button class="btn btn-ghost btn-mini" id="vizPrev" type="button" title="上一步">◀</button>
+        <button class="btn btn-primary btn-mini" id="vizPlay" type="button">▶ 自动播放</button>
+        <button class="btn btn-ghost btn-mini" id="vizNext" type="button" title="下一步">▶|</button>
+        <button class="btn btn-ghost btn-mini" id="vizLast" type="button" title="跳到最后">⏭</button>
+        <div class="player-progress"><div id="vizProgressBar"></div></div>
+        <span class="player-count" id="vizCount">0 / 0</span>
+        <label class="speed-ctl">速度
+          <input type="range" id="vizSpeed" min="1" max="5" step="1" value="3">
+          <span id="vizSpeedLabel">1.0×</span>
+        </label>
+      </div>
+      <div class="stepper" id="vizStepper"></div>
+
+      <div class="viz-grid">
+        <div class="viz-left">
+          <div class="viz-stage-head" id="vizStageHead"></div>
+          <div class="svg-wrap viz-svg" id="vizSvgWrap"></div>
+          <div class="viz-legend">
+            <span><i class="dot calc"></i> 当前计算层</span>
+            <span><i class="dot done-f"></i> 已前向计算</span>
+            <span><i class="dot done-b"></i> 已回传 δ</span>
+            <span><i class="dot idle"></i> 尚未到达</span>
+            <span class="viz-hint">节点内数字 = 当前环节的数值（z / a / δ）</span>
+          </div>
+        </div>
+        <div class="viz-right">
+          <div class="calc-card" id="vizDetail"></div>
+        </div>
+      </div>
+
+      <div class="btn-row wrap viz-actions">
+        <button class="btn btn-ghost" id="btnForward" type="button">① 前向传播</button>
+        <button class="btn btn-ghost" id="btnBackward" type="button" disabled>② 反向传播</button>
+        <button class="btn btn-ghost" id="btnApplyStep" type="button" disabled>③ 应用这次更新</button>
+        <span class="viz-tip" id="vizTip">③ 会把当前样本的梯度真正写入权重；其余操作只观察、不修改网络。</span>
+      </div>
+      <details class="raw-details">
+        <summary>展开完整计算明细（文字 / 矩阵表）</summary>
+        <div id="stepView" class="step-view">
+          <div class="empty">请选择样本后点击「① 前向传播」，逐层查看 z = W·a + b 与 a = f(z) 的数值；再点击「② 反向传播」查看误差信号 δ 与梯度。</div>
+        </div>
+      </details>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <div class="card-head"><h2>训练控制台</h2></div>
+        <div class="btn-row wrap">
+          <button class="btn btn-primary" id="btnTrain" type="button">▶ 开始训练</button>
+          <button class="btn btn-ghost" id="btnPause" type="button" disabled>⏸ 暂停</button>
+          <button class="btn btn-ghost" id="btnStepEpoch" type="button">单步一轮</button>
+          <button class="btn btn-ghost" id="btnReset" type="button">↺ 重置训练</button>
+        </div>
+        <div class="progress"><div id="progressBar"></div></div>
+        <div class="metrics">
+          <div><span>当前轮次</span><strong id="mEpoch">0</strong></div>
+          <div><span>当前损失</span><strong id="mLoss">—</strong></div>
+          <div><span>最低损失</span><strong id="mBest">—</strong></div>
+          <div><span>参数量</span><strong id="mParams">—</strong></div>
+        </div>
+        <p class="hint" id="trainStatus">点击「开始训练」按设定的循环次数迭代；也可先用下方单步推导观察一次完整的 BP 过程。</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head spread">
+          <h2>损失函数收敛曲线</h2>
+          <label class="check"><input type="checkbox" id="logScale"> 对数纵轴</label>
+        </div>
+        <div id="curveSvgWrap" class="svg-wrap curve-wrap"></div>
+        <p class="hint" id="curveStats">等待训练数据…</p>
+      </section>
+    </div>
+
+    <div class="grid-2">
+      <section class="card">
+        <div class="card-head spread"><h2>迭代日志</h2><span class="stat" id="logCount">0 条</span></div>
+        <div class="table-scroll log-scroll"><table class="data-table" id="logTable"></table></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>最终预测结果对比</h2></div>
+        <div class="table-scroll log-scroll" id="predWrap"><div class="empty">训练后展示每个样本的预测值与目标值。</div></div>
+      </section>
+    </div>
+
+    <!-- ==================== 拓展实验台 ==================== -->
+    <section class="card lab-card">
+      <div class="card-head spread">
+        <h2>拓展实验台 · 让训练过程看得见</h2>
+        <span class="stat">4 个专题实验</span>
+      </div>
+
+      <div class="lab-tabs" id="labTabs">
+        <button class="lab-tab active" data-tab="boundary" type="button">① 决策边界</button>
+        <button class="lab-tab" data-tab="curves" type="button">② 函数曲线</button>
+        <button class="lab-tab" data-tab="optim" type="button">③ 优化器对比</button>
+        <button class="lab-tab" data-tab="overfit" type="button">④ 过拟合与正则</button>
+      </div>
+
+      <!-- ① 决策边界 -->
+      <div class="lab-pane active" id="labBoundary">
+        <p class="lab-intro">把输入平面上每个点的网络预测涂成颜色，叠上训练样本——直观看到网络「学到」的分界面或拟合曲面。随主训练过程实时演化。</p>
+        <div class="lab-controls wrap">
+          <label>网格精度
+            <select id="bdGrid"><option value="32">32 × 32</option><option value="48" selected>48 × 48</option><option value="64">64 × 64</option></select>
+          </label>
+          <label class="chk"><input type="checkbox" id="bdFollow" checked> 随主训练自动刷新</label>
+          <button class="btn btn-mini" id="bdRefresh" type="button">刷新边界</button>
+          <button class="btn btn-mini" id="bdSnapshot" type="button">保存当前快照</button>
+          <button class="btn btn-mini" id="bdClear" type="button">清除快照</button>
+        </div>
+        <div class="bd-wrap">
+          <div class="bd-canvas-wrap"><canvas id="bdCanvas" width="520" height="440"></canvas></div>
+          <div class="bd-side">
+            <h4>图例</h4><div id="bdLegend" class="bd-legend"></div>
+            <h4>当前状态</h4><div id="bdStats" class="bd-stats"></div>
+            <h4>演化快照</h4><div id="bdSnaps" class="bd-snaps"><span class="muted">点「保存当前快照」记录不同训练阶段的边界</span></div>
+          </div>
+        </div>
+        <p class="hint" id="bdNote"></p>
+      </div>
+
+      <!-- ② 函数曲线 -->
+      <div class="lab-pane" id="labCurves">
+        <p class="lab-intro">可交互查看每个激活函数 / 损失函数在原尺寸下的形状与导数（虚线）。移动鼠标即可读取该点的精确取值。</p>
+        <div class="lab-controls wrap">
+          <div class="seg" id="fcKind">
+            <button class="seg-btn active" data-kind="act" type="button">激活函数</button>
+            <button class="seg-btn" data-kind="loss" type="button">损失函数</button>
+          </div>
+          <label>选择函数 <select id="fcName"></select></label>
+          <label>横轴范围 <select id="fcRange"><option value="3">−3 ~ 3</option><option value="5">−5 ~ 5</option><option value="1">−1 ~ 1</option></select></label>
+          <label id="fcTargetWrap" class="lab-hide">目标值 t
+            <select id="fcTarget"><option value="1">t = 1</option><option value="0">t = 0</option><option value="0.5">t = 0.5</option></select>
+          </label>
+        </div>
+        <div class="curve-wrap">
+          <div class="curve-canvas-wrap"><canvas id="fcCanvas" width="620" height="380"></canvas></div>
+          <div class="curve-info" id="fcInfo"></div>
+        </div>
+      </div>
+
+      <!-- ③ 优化器对比 -->
+      <div class="lab-pane" id="labOptim">
+        <p class="lab-intro">同一份数据、同一个初始权重，同时训练 SGD / Momentum / Adam，叠加损失曲线对比收敛速度与稳定性——一份现成的对照实验。</p>
+        <div class="lab-controls wrap">
+          <label>数据集
+            <select id="opData">
+              <option value="xor">XOR 异或</option>
+              <option value="circle">同心圆分类</option>
+              <option value="linear">线性拟合 y=2x+1</option>
+              <option value="current">使用当前主数据集</option>
+            </select>
+          </label>
+          <label>轮数 <input type="number" id="opEpochs" value="400" min="20" max="3000" step="20"></label>
+          <label>学习率 <input type="number" id="opLr" value="0.3" min="0.0001" max="5" step="0.01"></label>
+          <label class="chk"><input type="checkbox" id="opAdamScale" checked> Adam 学习率 ×0.1</label>
+          <button class="btn btn-primary btn-mini" id="opRun" type="button">运行对比</button>
+        </div>
+        <div class="lab-controls wrap">
+          <label class="chk"><input type="checkbox" id="opUseSgd" checked> SGD</label>
+          <label class="chk"><input type="checkbox" id="opUseMom" checked> Momentum</label>
+          <label class="chk"><input type="checkbox" id="opUseAdam" checked> Adam</label>
+          <span class="hint">同一 seed 初始化，保证起点一致</span>
+        </div>
+        <div class="op-wrap">
+          <div class="op-canvas-wrap"><canvas id="opCanvas" width="640" height="380"></canvas></div>
+          <div class="op-side"><div id="opTable"></div><p class="hint" id="opConclusion">设置参数后点击「运行对比」。</p></div>
+        </div>
+      </div>
+
+      <!-- ④ 过拟合与正则 -->
+      <div class="lab-pane" id="labOverfit">
+        <p class="lab-intro">用带噪声的正弦回归任务演示过拟合：容量过大的网络会把噪声也记住。调节 L2 权重衰减与 Dropout，观察验证集损失如何被压回去。</p>
+        <div class="lab-controls wrap">
+          <label>样本数 <input type="number" id="ofN" value="40" min="10" max="200" step="5"></label>
+          <label>噪声强度 <input type="number" id="ofNoise" value="0.25" min="0" max="1" step="0.05"></label>
+          <label>网络容量
+            <select id="ofCap"><option value="3">小（3 个隐藏神经元）</option><option value="8">中（8 个）</option><option value="24" selected>大（24 个，易过拟合）</option></select>
+          </label>
+          <label>L2 λ <input type="number" id="ofL2" value="0" min="0" max="1" step="0.001"></label>
+          <label>Dropout <input type="number" id="ofDrop" value="0" min="0" max="0.8" step="0.05"></label>
+          <label>轮数 <input type="number" id="ofEpochs" value="600" min="50" max="3000" step="50"></label>
+          <button class="btn btn-primary btn-mini" id="ofRun" type="button">运行实验</button>
+        </div>
+        <div class="of-wrap">
+          <div class="of-canvas-wrap"><canvas id="ofFitCanvas" width="480" height="360"></canvas></div>
+          <div class="of-canvas-wrap"><canvas id="ofLossCanvas" width="480" height="360"></canvas></div>
+        </div>
+        <div id="ofStats" class="of-stats"></div>
+        <p class="hint" id="ofConclusion">点击「运行实验」观察训练集与验证集损失的分叉。</p>
+      </div>
+    </section>
+
+    <details class="card theory">
+      <summary>数学原理与公式速查（点击展开）</summary>
+      <div class="theory-body">
+        <h3>前向传播</h3>
+        <p>对第 <em>l</em> 层（l = 1 … L）：</p>
+        <pre>z⁽ˡ⁾ = W⁽ˡ⁾ · a⁽ˡ⁻¹⁾ + b⁽ˡ⁾
+a⁽ˡ⁾ = fₗ( z⁽ˡ⁾ ),        a⁽⁰⁾ = x
+L = E( a⁽ᴸ⁾, t )</pre>
+        <h3>反向传播</h3>
+        <pre>输出层:  δ⁽ᴸ⁾ = ∂L/∂a⁽ᴸ⁾ ⊙ f′(z⁽ᴸ⁾)
+隐藏层:  δ⁽ˡ⁾ = ( W⁽ˡ⁺¹⁾ᵀ · δ⁽ˡ⁺¹⁾ ) ⊙ f′(z⁽ˡ⁾)
+梯度:    ∂L/∂W⁽ˡ⁾ = δ⁽ˡ⁾ · (a⁽ˡ⁻¹⁾)ᵀ ,   ∂L/∂b⁽ˡ⁾ = δ⁽ˡ⁾
+更新:    W ← W − η · ∂L/∂W ,   b ← b − η · ∂L/∂b</pre>
+        <p>当输出层为 <b>Sigmoid + BCE</b> 或 <b>Softmax + CE</b> 时，输出层误差信号可解析化简为 <b>δ⁽ᴸ⁾ = a − t</b>，本实验台会自动启用该化简（数值更稳定）。Softmax 的通用情形使用雅可比矩阵 <em>Jᵀ·d = aᵢ(dᵢ − Σⱼaⱼdⱼ)</em>。</p>
+        <h3>激活函数</h3>
+        <div id="actTable"></div>
+        <h3>损失函数</h3>
+        <div id="lossTable"></div>
+        <h3>推荐搭配</h3>
+        <ul>
+          <li>二分类：Sigmoid（输出层）+ BCE</li>
+          <li>多分类：Softmax（输出层）+ CE，目标用 one-hot</li>
+          <li>回归：Linear（输出层）+ MSE / MAE / Huber</li>
+          <li>隐藏层常用 ReLU / Tanh；配合 ReLU 可用 He 初始化</li>
+        </ul>
+        <p class="hint">说明：本实验台采用<b>全批量梯度下降</b>，每轮用全部样本梯度的平均值更新一次参数；优化器可选 SGD / Momentum / Adam。</p>
+      </div>
+    </details>
+
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<div id="modalMask" class="modal-mask" hidden>
+  <div class="modal">
+    <h2>导入配置（JSON）</h2>
+    <p class="hint">粘贴此前导出的配置内容，将恢复网络结构、参数、数据集与训练设置。</p>
+    <textarea id="importText" spellcheck="false" placeholder='{ "sizes": [2, 3, 1], ... }'></textarea>
+    <div class="btn-row right">
+      <button class="btn btn-ghost" id="btnModalCancel" type="button">取消</button>
+      <button class="btn btn-primary" id="btnModalOk" type="button">导入</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/app.js"></script>
+<script src="js/visualizer.js"></script>
+<script src="js/lab.js"></script>
+</body>
+</html>

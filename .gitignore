@@ -1,0 +1,21 @@
+# WorkBuddy 本地项目数据（含会话记忆，不属于开源内容）
+.workbuddy/
+
+# 操作系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# 依赖与构建产物（本项目当前无依赖，预留）
+node_modules/
+dist/
+build/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.bak
