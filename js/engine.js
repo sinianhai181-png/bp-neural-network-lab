@@ -2,6 +2,16 @@
  * BP 神经网络核心计算引擎  (无第三方依赖)
  * 浏览器: window.BPEngine   /   Node: require('./engine.js')
  * 提供: 任意层数/宽度、多种激活与损失函数、完整前向/反向中间量
+ *
+ * 阅读顺序建议：
+ *   ACT / LOSS  ->  activate / softmaxVec  ->  isPaired
+ *   ->  Network 构造函数  ->  forward  ->  backward
+ *   ->  accumulate  ->  clipGradients  ->  apply  ->  epoch
+ * 每一步计算对应的数学公式见 docs/MATH.md。
+ *
+ * 权重索引约定：weights[k][j][i] 是「第 k 层 -> 第 k+1 层」这条连接中，
+ * 前一层第 i 个神经元指向后一层第 j 个神经元的权重；biases[k][j] 是后一层
+ * 第 j 个神经元的偏置。deltas[k] 是第 k 层加权和 z 的梯度 ∂L/∂z。
  * ============================================================= */
 (function (root, factory) {
   var api = factory();
@@ -10,9 +20,12 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  // 概率裁剪下界：BCE / CE 里 ln(0) 会变成 -Infinity，梯度也会爆炸。
   var EPS = 1e-9;
   var clamp = function (v, lo, hi) { return Math.min(hi, Math.max(lo, v)); };
+  // exp(±60) 已接近双精度上下限，再大只会溢出；sigmoid/ELU 用它限制 z。
   var zcap = function (z) { return clamp(z, -60, 60); };
+  // 训练中一旦出现 NaN/Infinity 就当成 0，避免一次数值事故污染整个网络。
   var finite = function (v) { return Number.isFinite(v) ? v : 0; };
 
   /* 可复现的伪随机数发生器 */
@@ -27,11 +40,13 @@
   }
 
   /* ---------------- 激活函数 ---------------- */
+  /* 激活函数表。df 接收 (z, a)：a 是前向算过的激活值，
+   *  Sigmoid / Tanh / ELU 的导数都能用 a 表示，直接复用省一次指数运算。 */
   var ACT = {
     sigmoid: {
       label: 'Sigmoid', desc: '1 / (1 + e⁻ᶻ)，输出 (0,1)',
       f: function (z) { return 1 / (1 + Math.exp(-zcap(z))); },
-      df: function (z, a) { return a * (1 - a); }
+      df: function (z, a) { return a * (1 - a); }   // f′(z) = a(1 − a)
     },
     tanh: {
       label: 'Tanh', desc: 'tanh(z)，输出 (−1,1)',
@@ -63,11 +78,14 @@
     }
   };
 
+  /* Softmax 对整个向量归一化，不是逐元素激活。
+   * 先减 max(z) 再取指数：e^(z−m) 最大为 1，避免 e^z 溢出；
+   * 分子分母同时乘 e^(−m)，结果与直接算 e^z/Σe^z 相同。 */
   function softmaxVec(z) {
     var m = -Infinity, i;
     for (i = 0; i < z.length; i++) if (z[i] > m) m = z[i];
     var ex = z.map(function (v) { return Math.exp(clamp(v - m, -60, 60)); });
-    var s = ex.reduce(function (p, c) { return p + c; }, 0) + EPS;
+    var s = ex.reduce(function (p, c) { return p + c; }, 0) + EPS; // 防除零
     return ex.map(function (v) { return v / s; });
   }
 
@@ -140,7 +158,10 @@
     }
   };
 
-  /* 经典解析化简: δ⁽ᴸ⁾ = a − t，数值更稳定、也是教材标准写法 */
+  /* 经典解析化简: δ⁽ᴸ⁾ = a − t，数值更稳定、也是教材标准写法。
+   * Sigmoid+BCE：∂L/∂a = (a−t)/(a(1−a))，乘以 f′=a(1−a) 后约掉分母；
+   * Softmax+CE ：代入 Softmax 雅可比后，one-hot 目标使 Σt=1，同样得 a−t。
+   * 只有这两种搭配成立，其他组合一律走通用链式法则。 */
   function isPaired(loss, act) {
     return (loss === 'bce' && act === 'sigmoid') || (loss === 'ce' && act === 'softmax');
   }
@@ -275,7 +296,9 @@
     return { a: a, z: z, x: x.slice(), masks: masks, keep: 1 - p };
   };
 
-  /* 反向传播: 返回各层误差信号 δ 与梯度 ∂L/∂W、∂L/∂b */
+  /* 反向传播: 返回各层误差信号 δ 与梯度 ∂L/∂W、∂L/∂b。
+   * 分三段：① 输出层 δ⁽ᴸ⁾  ② 隐藏层 δ⁽ᵏ⁾  ③ 由 δ 算参数梯度。
+   * cache 是 forward() 的返回值，必须配套传入——δ⁽ᵏ⁾ 要用到该层的 z 与 a。 */
   Network.prototype.backward = function (cache, t) {
     var L = this.L, k, j, i;
     if (t.length !== this.sizes[L]) throw new Error('目标维度与输出层节点数不一致');
@@ -284,12 +307,15 @@
     var deltas = new Array(L + 1).fill(null);
     var d;
 
+    // ① 输出层。能用解析化简就直接用 a−t，省掉一次除法且更稳定。
     if (isPaired(this.loss, actOut)) {
       deltas[L] = aL.map(function (v, i) { return v - t[i]; });
     } else {
+      // d = ∂L/∂a；通用情形下 δ = d ⊙ f′(z)，但 Softmax 要单独处理。
       d = LOSS[this.loss].d(aL, t);
       if (actOut === 'softmax') {
-        /* Jᵀ·d : aᵢ(dᵢ − Σⱼ aⱼdⱼ) */
+        /* Softmax 的雅可比 ∂aᵢ/∂zⱼ = aᵢ(δᵢⱼ − aⱼ)，乘上 d 后化简为
+         * δᵢ = aᵢ(dᵢ − Σⱼ aⱼdⱼ)。这里先算公共的标量 dot。 */
         var dot = 0;
         for (i = 0; i < aL.length; i++) dot += aL[i] * d[i];
         deltas[L] = aL.map(function (v, i) { return v * (d[i] - dot); });
@@ -300,6 +326,9 @@
       }
     }
 
+    // ② 隐藏层，从倒数第二层往输入方向逐层回传：
+    // δ⁽ᵏ⁾ᵢ = (Σⱼ W⁽ᵏ⁺¹⁾ⱼᵢ · δ⁽ᵏ⁺¹⁾ⱼ) · f′ₖ(z⁽ᵏ⁾ᵢ)
+    // 内层对 j 求和相当于用下一层权重矩阵的转置乘 δ⁽ᵏ⁺¹⁾。
     for (var l = L - 1; l >= 1; l--) {
       var act = this.acts[l - 1];
       var zl = cache.z[l], al = cache.a[l], next = deltas[l + 1];
@@ -316,6 +345,8 @@
       deltas[l] = dv;
     }
 
+    // ③ 参数梯度：∂L/∂W⁽ᵏ⁾ⱼᵢ = δ⁽ᵏ⁾ⱼ · a⁽ᵏ⁻¹⁾ᵢ（外积），
+    //    ∂L/∂b⁽ᵏ⁾ⱼ = δ⁽ᵏ⁾ⱼ。偏置不需要乘上一层的激活。
     var gW = [], gB = [];
     for (k = 0; k < L; k++) {
       var M = [], gv = [];
@@ -358,6 +389,8 @@
       }
       details.push({ x: s.x.slice(), t: s.t.slice(), cache: cache, back: bk, loss: lv });
     }
+    // 全批量：样本梯度累加后除以 N。L2 项不随 batch 再平均——
+    // 目标函数是 (1/N)ΣLₙ + (λ/2)Σw²，求导后正则项就是 λw。
     var N = dataset.length;
     for (var k2 = 0; k2 < this.L; k2++) {
       for (var j2 = 0; j2 < this.sizes[k2 + 1]; j2++) {
@@ -404,12 +437,15 @@
         for (i = 0; i < this.sizes[k]; i++) {
           g = gW[k][j][i];
           if (optimizer === 'adam') {
+            // 一阶矩 m 与二阶矩 v 的指数滑动平均，再做偏差校正
+            // m̂ = m/(1−β₁ᵗ)、v̂ = v/(1−β₂ᵗ)，校正后用于更新。
             this.mW[k][j][i] = b1 * this.mW[k][j][i] + (1 - b1) * g;
             this.vW[k][j][i] = b2 * this.vW[k][j][i] + (1 - b2) * g * g;
             var mh = this.mW[k][j][i] / (1 - Math.pow(b1, t));
             var vh = this.vW[k][j][i] / (1 - Math.pow(b2, t));
             delta = -lr * mh / (Math.sqrt(vh) + eps);
           } else if (optimizer === 'momentum') {
+            // 累计速度 v = μv − ηg，保留过去梯度的方向以加速稳定下降。
             this.velW[k][j][i] = mu * this.velW[k][j][i] - lr * g;
             delta = this.velW[k][j][i];
           } else {
@@ -444,7 +480,9 @@
     return { loss: acc.loss, details: acc.details, clipScale: scale };
   };
 
-  /* 评估：返回平均损失与分类准确率（输出维度>1 或二值单输出时） */
+  /* 评估：返回平均损失与分类准确率。
+   * 多输出取 argmax 作为预测类别，单输出按 0.5 阈值判为 0/1。
+   * 这不是泛化指标：传入训练集时得到的只是训练准确率。 */
   Network.prototype.evaluate = function (dataset) {
     if (!dataset.length) return { loss: 0, acc: 0, n: 0 };
     var total = 0, correct = 0;
