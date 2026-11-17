@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 项目文档
+    url: https://github.com/sinianhai181-png/bp-neural-network-lab#readme
+    about: 先查看 README 与 docs 目录下的数学推导、实验说明

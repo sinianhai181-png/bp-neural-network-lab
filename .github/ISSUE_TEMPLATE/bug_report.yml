@@ -1,0 +1,63 @@
+name: 问题反馈
+description: 报告程序缺陷、数值异常或界面问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量填写以下信息，便于复现和定位。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 问题描述
+      description: 发生了什么，预期结果是什么
+      placeholder: 例如：载入三分类预设后，损失曲线不更新
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 按顺序写出能稳定复现的操作
+      placeholder: |
+        1. 打开在线演示
+        2. 预设选择「三分类」
+        3. 点击「开始训练」
+        4. 观察到……
+    validations:
+      required: true
+
+  - type: input
+    id: config
+    attributes:
+      label: 相关配置
+      description: 若与网络结构或参数有关，请写出具体数值
+      placeholder: "结构 2-5-3；激活 tanh/softmax；损失 CE；学习率 0.05"
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: 运行环境
+      options:
+        - 在线演示（GitHub Pages）
+        - 本地双击 index.html
+        - 本地静态服务器
+        - Node.js 测试
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器与版本
+      placeholder: "Chrome 120 / Edge 120 / Firefox 121"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台输出
+      description: 若浏览器控制台（F12）有报错，请粘贴完整信息
+      render: shell

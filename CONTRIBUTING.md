@@ -4,9 +4,9 @@
 
 ## 报告问题
 
-提 Issue 时请包含：
+提 Issue 时请使用仓库提供的模板（问题反馈 / 功能建议），并包含：
 
-- 浏览器与版本、操作系统
+- 浏览器与版本、操作系统，以及运行方式（在线演示 / 本地文件 / 静态服务器）
 - 复现步骤（用了哪个预设、改了哪些参数、点了什么）
 - 实际结果与预期结果
 - 若涉及计算错误，给出具体数值和网络配置，最好附一段可运行的 Node 脚本
@@ -23,14 +23,14 @@ cd bp-neural-network-lab
 python -m http.server 8000     # 可选：用 HTTP 方式打开
 ```
 
-运行测试需要 Node.js 与 jsdom：
+运行测试需要 Node.js 18 或更高版本与 jsdom。依赖版本已锁定在 `package-lock.json`：
 
 ```bash
-npm install
+npm ci
 npm test
 ```
 
-提交前请确保 6 组测试全部通过。
+提交前请确保 6 组测试全部通过。Push 到 `main` 或发起 PR 时，GitHub Actions 会在 Node 18 / 20 / 22 三个版本上自动跑同一套测试，PR 页面会显示结果。CI 徽章在 README 顶部。
 
 ## 代码约定
 
@@ -52,7 +52,9 @@ npm test
 1. 在自己的分支上改动
 2. 运行 `npm test`
 3. 若是功能改动，更新 `CHANGELOG.md` 与相关文档
-4. 发起 Pull Request，说明改了什么、为什么改、如何验证
+4. 发起 Pull Request，按 PR 模板填写改动说明与验证方式
+
+若改动了界面，建议在 PR 描述中附截图。仓库 `docs/assets/` 下已有六张界面截图可作为对照，更新界面时请同步重拍。
 
 ## 可以做的方向
 

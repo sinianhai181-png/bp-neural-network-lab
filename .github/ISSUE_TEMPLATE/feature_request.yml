@@ -1,0 +1,42 @@
+name: 功能建议
+description: 提出新功能、实验或教学内容的建议
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: 建议内容
+      description: 希望增加什么功能，解决什么问题
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 类别
+      options:
+        - 可视化与演示
+        - 算法与训练（优化器 / 正则化 / 学习率策略）
+        - 数据与实验
+        - 文档与教学
+        - 工程与测试
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 使用场景
+      description: 在什么教学或演示场景下会用到
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 实现前提
+      options:
+        - label: 保持纯前端、零运行时依赖
+          description: 本项目的定位是双击即可运行的教学工具，原则上不引入运行时依赖
+        - label: 我愿意提交 PR 实现

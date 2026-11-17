@@ -1,8 +1,33 @@
 # BP 神经网络反向传播实验台
 
+[![tests](https://github.com/sinianhai181-png/bp-neural-network-lab/actions/workflows/test.yml/badge.svg)](https://github.com/sinianhai181-png/bp-neural-network-lab/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 一个用于教学和演示的交互式神经网络实验台，纯浏览器运行，不依赖任何第三方库。可以在界面上改动网络结构、激活函数、损失函数、优化器和训练数据，逐步观察前向传播、误差反传与参数更新的中间数值，并用图形看到模型如何收敛。
 
 在线演示：https://sinianhai181-png.github.io/bp-neural-network-lab/
+
+## 界面预览
+
+整体布局：左侧配置网络结构、参数与数据，右侧实时展示网络、损失曲线与训练结果。
+
+![界面总览](docs/assets/01-overview.png)
+
+BP 传播全景把一次迭代的每一层、每个环节铺在同一张图上。上半区为前向传播（W、b、z、a），下半区为误差反传（δ、∂W、∂b）与参数更新；蓝色表示正值、橙色表示负值，颜色越深绝对值越大。所有数值均来自当前网络的真实计算，点击任一卡片可跳到对应环节。
+
+![BP 传播全景](docs/assets/02-propagation.png)
+
+逐环节演示把一次完整 BP 拆成 4L+3 个步骤，可自动播放或单步前进。左侧网络图高亮当前计算节点，右侧同步展开该步算式——例如图中第 5 步 `a⁽²⁾ = Sigmoid(z⁽²⁾)` 的代入与导数值。
+
+![逐环节演示](docs/assets/03-stepwise.png)
+
+拓展实验台的决策边界：把 2D 输入平面上每个点的网络预测涂成颜色，叠上训练样本，直观看到分界面如何形成。图中是训练 600 轮后的 XOR，当前损失 0.133，可保存多个快照对比演化过程。
+
+![决策边界](docs/assets/04-decision-boundary.png)
+
+其余实验截图：[函数曲线](docs/assets/05-function-curves.png)（实线为函数、虚线为导数，可读取任意点取值）、[优化器对比](docs/assets/06-optimizer-compare.png)（同一初始权重下 SGD / Momentum / Adam 的损失曲线叠加）。
 
 ## 文档导航
 
@@ -23,10 +48,10 @@ python -m http.server 8000
 
 然后访问 http://localhost:8000 。
 
-程序本身零依赖。只有运行自动化测试才需要 Node.js：
+程序本身零依赖。只有运行自动化测试才需要 Node.js 18+。依赖版本已锁定：
 
 ```bash
-npm install
+npm ci
 npm test
 ```
 
@@ -101,8 +126,14 @@ MAE 与 Huber 在误差恰好为 0 处不可导，检验样本避开了该点。
 │   ├── app.js          界面交互与训练控制
 │   ├── visualizer.js   传播全景与逐环节播放器
 │   └── lab.js          四个对照实验
-├── docs/               数学推导与可复现实验
-├── tests/              6 组自动化测试
+├── docs/
+│   ├── MATH.md          数学推导与公式
+│   ├── EXPERIMENTS.md   可复现实验
+│   └── assets/          界面截图
+├── tests/               6 组自动化测试
+├── .github/workflows/   CI：三版本 Node 上跑测试
+├── package.json        测试脚本与开发依赖
+├── package-lock.json   依赖版本锁定
 ├── CHANGELOG.md        版本记录
 └── CONTRIBUTING.md     贡献指南
 ```
