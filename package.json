@@ -1,0 +1,12 @@
+{
+  "name": "bp-neural-network-lab",
+  "version": "1.0.0",
+  "description": "BP 神经网络反向传播交互实验台（纯前端零依赖，测试需 jsdom）",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run-all.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

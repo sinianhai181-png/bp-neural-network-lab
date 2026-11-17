@@ -74,11 +74,28 @@ const net = new Network({ sizes: [2, 3, 1], activations: ['sigmoid', 'sigmoid'],
 - **数值稳定**：全局范数梯度裁剪、Softmax 减去最大值、损失函数的概率值裁剪。
 - **正则化**：L2 权重衰减（正则项不随 batch 平均）与 inverted dropout（仅隐藏层，推理时期望不变）。
 
-## 验证情况
+## 验证情况与运行测试
 
 - 对所有激活 × 损失组合做了**数值梯度检验**，解析梯度与数值梯度最大误差约 **1e-10**。
 - XOR、AND、线性回归、Softmax 三分类均收敛到接近零误差。
 - 浏览器端经过 DOM 级自动化测试：主流程、可视化、拓展实验、极端网络结构（12 输入 / 5 隐藏层 / 12 输出）均通过。
+
+**程序本身零依赖**；只有运行测试需要 Node.js 和 jsdom：
+
+```bash
+npm install
+npm test
+```
+
+`tests/` 下共 6 组测试：引擎与梯度检验、主功能回归、极端结构、播放器滚动、拓展实验台、边界场景。
+
+## 用 GitHub Pages 发布在线演示
+
+1. 把仓库推送到 GitHub 后，进入仓库 **Settings → Pages**
+2. Source 选 **Deploy from a branch**，Branch 选 `main` / `(root)`，保存
+3. 等待几十秒，访问 `https://<你的用户名>.github.io/bp-neural-network-lab/`
+
+仓库根目录的 `.nojekyll` 文件用于确保 Pages 直接托管原始文件。
 
 ## 许可证
 
